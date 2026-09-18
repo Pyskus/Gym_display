@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym Display - Télécommande Coach</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #111827; color: #f3f4f6; font-family: 'Segoe UI', sans-serif; padding: 1.5rem; }
+        h1 { font-size: 1.5rem; margin-bottom: 1rem; text-align: center; color: #38bdf8; }
+        .card { background: #1f2937; border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .block-card { background: #374151; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; border-left: 5px solid #38bdf8; }
+        .block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        
+        label { display: block; font-size: 0.9rem; color: #9ca3af; margin-bottom: 0.4rem; }
+        input[type="number"], input[type="text"] { width: 100%; padding: 0.5rem; background: #1f2937; border: 1px solid #4b5563; color: white; border-radius: 6px; }
+        input[type="color"] { -webkit-appearance: none; border: none; width: 35px; height: 35px; border-radius: 6px; cursor: pointer; background: none; }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: 2px solid #4b5563; border-radius: 6px; }
+        
+        .phase-row, .participant-row { display: flex; gap: 8px; margin-bottom: 0.5rem; align-items: center; background: #4b5563; padding: 8px; border-radius: 6px; }
+        .phase-row input[type="text"] { flex: 2; margin-bottom: 0; }
+        .phase-row input[type="number"] { flex: 1; margin-bottom: 0; }
+        
+        button { width: 100%; padding: 0.75rem; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 0.5rem; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-success { background: #10b981; color: white; margin-bottom: 1rem; padding: 1rem; font-size: 1.1rem; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-warning { background: #fa00d9; color: white; }
+        .btn-secondary { background: #4b5563; color: white; }
+        .btn-small { width: auto; padding: 0.4rem 0.8rem; margin: 0; font-size: 0.9rem; }
+        
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .flex-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>Télécommande Coach</h1>
+
+    <div class="card">
+        <label>Configuration des Participants (0 à 4) :</label>
+        <div id="participants-container"></div>
+        <button type="button" class="btn-primary btn-small" onclick="addParticipant()" style="margin-top: 5px;">+ Ajouter un Participant</button>
+    </div>
+
+    <div class="card">
+        <label>Couleurs de l'Horloge :</label>
+        <div class="flex-row">
+            <span>Fond (Horloge) :</span>
+            <input type="color" id="bg-color" value="{{ state.bg_color }}" onchange="updateLiveColors()">
+        </div>
+        <div class="flex-row">
+            <span>Texte (Global) :</span>
+            <input type="color" id="clock-color" value="{{ state.clock_color }}" onchange="updateLiveColors()">
+        </div>
+    </div>
+
+    <div id="blocks-container"></div>
+    <button type="button" class="btn-primary" onclick="addBlock()" style="margin-bottom: 1.5rem;">+ Ajouter un Bloc</button>
+
+    <div class="card">
+        <button class="btn-success" onclick="startProgram()">▶ LANCER LE PROGRAMME</button>
+        <div class="grid-2">
+            <button class="btn-secondary" onclick="prevPhase()">⏮ Précédent</button>
+            <button class="btn-secondary" onclick="nextPhase()">Suivant ⏭</button>
+        </div>
+        <div class="grid-2">
+            <button class="btn-warning" onclick="pauseTimer()">⏸ Pause</button>
+            <button class="btn-primary" onclick="resumeTimer()">▶ Reprendre</button>
+        </div>
+        <button class="btn-danger" onclick="stopTimer()">⏹ Arrêter / Retour Horloge</button>
+    </div>
+
+   <script>
+    const socket = io();
+    let blockCounter = 0;
+    let participantCounter = 0;
+    let availableSensors = [];
+
+    // --- COULEURS EN DIRECT ---
+    function updateLiveColors() {
+        socket.emit('update_colors', {
+            bg_color: document.getElementById('bg-color').value,
+            clock_color: document.getElementById('clock-color').value
+        });
+    }
+
+    // --- GESTION DES CAPTEURS BLE ---
+    socket.emit('get_sensors');
+
+    socket.on('update_sensors_list', (sensors) => {
+        availableSensors = sensors;
+        updateSensorDropdowns();
+    });
+
+    function updateSensorDropdowns() {
+        // Met à jour le menu déroulant de CHAQUE participant
+        document.querySelectorAll('.p-mac').forEach(select => {
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">-- Aucun capteur --</option>';
+
+            availableSensors.forEach(sensor => {
+                const option = document.createElement('option');
+                option.value = sensor.mac;
+                option.textContent = `${sensor.name} (${sensor.mac})`;
+                select.appendChild(option);
+            });
+
+            select.value = currentValue;
+        });
+    }
+
+    // --- GESTION DES PARTICIPANTS ---
+    function addParticipant(name = "Athlète", age = 30, initialMac = "") {
+        if (document.querySelectorAll('.participant-row').length >= 4) {
+            alert("Maximum 4 participants.");
+            return;
+        }
+        participantCounter++;
+        const pId = `part-${participantCounter}`;
+        const container = document.getElementById('participants-container');
+
+        const html = `
+            <div class="participant-row" id="${pId}" style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                <input type="text" class="p-name" value="${name}" placeholder="Nom" style="flex: 2;">
+                <input type="number" class="p-age" value="${age}" placeholder="Âge" style="flex: 1;" min="10" max="100">
+                <select class="p-mac form-control" style="flex: 2;">
+                    <option value="">-- Aucun capteur --</option>
+                </select>
+                <button type="button" class="btn-danger btn-small" onclick="document.getElementById('${pId}').remove(); sendParticipants();">✕</button>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', html);
+
+        // Remplit les capteurs pour le nouveau champ et sélectionne la valeur si donnée
+        updateSensorDropdowns();
+        if (initialMac) {
+            const newSelect = document.querySelector(`#${pId} .p-mac`);
+            if (newSelect) newSelect.value = initialMac;
+        }
+
+        sendParticipants();
+    }
+
+    function sendParticipants() {
+        const participants = [];
+        document.querySelectorAll('.participant-row').forEach((row, idx) => {
+            const macSelect = row.querySelector('.p-mac');
+            participants.push({
+                id: idx,
+                name: row.querySelector('.p-name').value || "Athlète",
+                age: parseInt(row.querySelector('.p-age').value) || 30,
+                mac: macSelect ? macSelect.value : ""
+            });
+        });
+        socket.emit('update_participants', { participants: participants });
+    }
+
+    // Détection des changements dans la section participant
+    document.addEventListener('change', function(e) {
+        if (e.target.closest('.participant-row')) {
+            sendParticipants();
+        }
+    });
+    document.addEventListener('input', function(e) {
+        if (e.target.closest('.participant-row')) {
+            sendParticipants();
+        }
+    });
+
+    // --- GESTION DES BLOCS ET PHASES ---
+   function addBlock(repeats = 1) {
+    blockCounter++;
+    const blockId = `block-${blockCounter}`;
+    const container = document.getElementById('blocks-container');
+    const blockHtml = `
+        <div class="block-card" id="${blockId}">
+            <div class="block-header">
+                <h3 style="color: #38bdf8;">Bloc ${blockCounter}</h3>
+                <button type="button" class="btn-danger btn-small" onclick="document.getElementById('${blockId}').remove()">Supprimer Bloc</button>
+            </div>
+            <div class="flex-row" style="justify-content: flex-start; gap: 10px;">
+                <label style="margin:0;">Nombre de séries :</label>
+                <input type="number" class="block-repeats" value="${repeats}" min="1" style="width: 80px; margin:0;">
+            </div>
+            <hr style="border: 0; border-top: 1px solid #4b5563; margin: 15px 0;">
+            <div class="phases-container"></div>
+            <button type="button" class="btn-secondary btn-small" onclick="addPhase('${blockId}')" style="margin-top: 10px;">+ Ajouter une Phase</button>
+        </div>
+    `;
+    container.insertAdjacentHTML('beforeend', blockHtml);
+
+    // --- Ajout automatique des phases par défaut à chaque nouveau bloc ---
+    addPhase(blockId, "GO !", 30, "#851919");
+    addPhase(blockId, "Repos", 30, "#2b22b2");
+
+    return blockId;
+}
+
+
+    function addPhase(blockId, name = "Phase", duration = 30, color = "#2563eb") {
+        const phasesContainer = document.querySelector(`#${blockId} .phases-container`);
+        if (!phasesContainer) return;
+        const phaseHtml = `
+            <div class="phase-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <input type="text" class="phase-name" value="${name}" placeholder="Nom">
+                <input type="number" class="phase-duration" value="${duration}" min="1" placeholder="Sec">
+                <input type="color" class="phase-color" value="${color}">
+                <button type="button" class="btn-danger btn-small" onclick="this.parentElement.remove()">✕</button>
+            </div>
+        `;
+        phasesContainer.insertAdjacentHTML('beforeend', phaseHtml);
+    }
+
+    function getPayload() {
+        const blocks = [];
+        document.querySelectorAll('.block-card').forEach(blockEl => {
+            const repeats = parseInt(blockEl.querySelector('.block-repeats').value) || 1;
+            const phases = [];
+            blockEl.querySelectorAll('.phase-row').forEach(phaseEl => {
+                phases.push({
+                    name: phaseEl.querySelector('.phase-name').value || "Phase",
+                    duration: parseInt(phaseEl.querySelector('.phase-duration').value) || 10,
+                    color: phaseEl.querySelector('.phase-color').value || "#2563eb"
+                });
+            });
+            if (phases.length > 0) {
+                blocks.push({ repeats_total: repeats, repeats_left: repeats, phases: phases });
+            }
+        });
+        return { blocks: blocks };
+    }
+
+    // --- COMMANDES DU TIMER ---
+    function startProgram() {
+        const payload = getPayload();
+        if (payload.blocks.length === 0) { alert("Ajoutez au moins un bloc !"); return; }
+        socket.emit('start_program', payload);
+    }
+
+    function nextPhase() { socket.emit('next_phase'); }
+    function prevPhase() { socket.emit('prev_phase'); }
+    function pauseTimer() { socket.emit('pause_timer'); }
+    function resumeTimer() { socket.emit('resume_timer'); }
+    function stopTimer() { socket.emit('stop_timer'); }
+
+    // --- INITIALISATION AU CHARGEMENT ---
+    window.onload = function() {
+        // Participant initial
+        addParticipant("Moi", 30);
+
+        // BLOC PAR DÉFAUT : GO ! (30s) / Repos (30s)
+        const defaultBlock = addBlock(1);
+       
+    };
+</script>
+</body>
+</html>

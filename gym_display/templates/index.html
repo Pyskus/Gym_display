@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gym Display - Écran Principal</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body, html {
+            width: 100%; height: 100%; background-color: #0b0f19; color: #ffffff;
+            font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden;
+        }
+
+        #audio-unlock {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(11, 15, 25, 0.98); z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer;
+        }
+        #audio-unlock h1 { font-size: 3vw; color: #38bdf8; margin-bottom: 2vh; }
+        #audio-unlock p { font-size: 1.5vw; color: #9ca3af; }
+
+        .layout-grid {
+            width: 100vw; height: 100vh;
+            display: grid;
+            grid-template-columns: 1fr 2fr 2fr 1fr;
+            grid-template-rows: 1fr;
+            transition: grid-template-columns 0.3s ease;
+        }
+
+        .side-panel {
+            display: flex; flex-direction: column; height: 100%;
+            border-right: 2px solid rgba(255,255,255,0.1);
+        }
+        .side-panel:last-child { border-right: none; border-left: 2px solid rgba(255,255,255,0.1); }
+
+        .cardio-box {
+            flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            padding: 1rem; transition: background-color 0.4s ease; text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            background-color: #1f2937;
+        }
+        .cardio-name { font-size: 2.2vw; font-weight: bold; margin-bottom: 1vh; text-transform: uppercase; }
+        .cardio-bpm { font-size: 7.5vw; font-weight: 900; line-height: 1; }
+        .cardio-pct { font-size: 2vw; opacity: 0.9; margin-top: 0.8vh; font-weight: 600; }
+
+        .center-panel {
+            grid-column: span 2;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            position: relative; padding: 2rem; transition: background-color 0.5s ease;
+            overflow: hidden;
+        }
+
+        /* Arrière-plan logo PNG */
+        .center-panel::before {
+            content: "";
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 140vw; height: 140vh;
+            background-image: url('/static/logo.png');
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            opacity: 0.20;
+            z-index: 0;
+            pointer-events: none;
+            display: block;
+        }
+
+        .center-panel.timer-active::before { display: none; }
+
+        #clock-view { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; height: 100%; z-index: 1; }
+        #clock-time { font-size: 14vw; font-weight: 800; letter-spacing: -2px; }
+        #clock-date { font-size: 3vw; color: #9ca3af; text-transform: uppercase; letter-spacing: 4px; margin-top: 1rem; }
+
+        #timer-view { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; height: 100%; text-align: center; z-index: 1; }
+        #phase-title { font-size: 6vw; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 2vh; }
+        #timer-countdown { font-size: 22vw; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+        #timer-meta { font-size: 2.2vw; color: rgba(255, 255, 255, 0.9); margin-top: 3vh; }
+    </style>
+</head>
+<body>
+
+    <div id="audio-unlock">
+        <h1>Initialisation de l'affichage</h1>
+        <p>Cliquez n'importe où pour activer l'audio.</p>
+    </div>
+
+    <div class="layout-grid" id="main-layout">
+        <div class="side-panel" id="left-side"></div>
+
+        <div class="center-panel" id="center-panel">
+            <div id="clock-view">
+                <div id="clock-time">00:00:00</div>
+                <div id="clock-date">Chargement...</div>
+            </div>
+            <div id="timer-view" style="display:none;">
+                <div id="phase-title">PRÉPARATION</div>
+                <div id="timer-countdown">00</div>
+                <div id="timer-meta"></div>
+            </div>
+        </div>
+
+        <div class="side-panel" id="right-side"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        document.getElementById('audio-unlock').addEventListener('click', function() {
+            if (audioCtx.state === 'suspended') { audioCtx.resume(); }
+            const osc = audioCtx.createOscillator(); osc.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.01);
+            this.style.display = 'none'; 
+        });
+
+        function playTone(frequency, duration) {
+            if (audioCtx.state === 'suspended') return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.value = frequency;
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        socket.on('play_beep', function(data) {
+            if (data.type === 'normal') playTone(440, 0.15);
+            else if (data.type === 'long') playTone(880, 0.8);
+            else if (data.type === 'end') playTone(300, 0.8);
+        });
+
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock-time').innerText = now.toTimeString().split(' ')[0];
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('clock-date').innerText = now.toLocaleDateString('fr-FR', options);
+        }, 1000);
+
+        socket.on('update_timer', function(state) {
+            const centerPanel = document.getElementById('center-panel');
+            const clockView = document.getElementById('clock-view');
+            const timerView = document.getElementById('timer-view');
+
+            if (state.mode === "timer") {
+                centerPanel.classList.add('timer-active');
+                centerPanel.style.backgroundColor = state.current_phase_color;
+                clockView.style.display = 'none';
+                timerView.style.display = 'flex';
+                document.getElementById('phase-title').innerText = state.phase_name;
+                document.getElementById('timer-countdown').innerText = state.time_left;
+                document.getElementById('phase-title').style.color = state.clock_color;
+                document.getElementById('timer-countdown').style.color = state.clock_color;
+
+                if(state.blocks && state.blocks.length > 0 && state.running) {
+                    const currentBlock = state.blocks[state.current_block_index];
+                    const currentSeries = currentBlock.repeats_total - currentBlock.repeats_left + 1;
+                    document.getElementById('timer-meta').innerText = `Bloc ${state.current_block_index + 1}/${state.blocks.length} - Série ${currentSeries}/${currentBlock.repeats_total}`;
+                } else {
+                    document.getElementById('timer-meta').innerText = "";
+                }
+            } else {
+                centerPanel.classList.remove('timer-active');
+                centerPanel.style.backgroundColor = state.bg_color;
+                document.getElementById('clock-time').style.color = state.clock_color;
+                timerView.style.display = 'none';
+                clockView.style.display = 'flex';
+            }
+
+            const leftSide = document.getElementById('left-side');
+            const rightSide = document.getElementById('right-side');
+            leftSide.innerHTML = ''; rightSide.innerHTML = '';
+
+            const p = state.participants || [];
+            const mainLayout = document.getElementById('main-layout');
+
+            if (p.length === 0) mainLayout.style.gridTemplateColumns = "0fr 1fr 1fr 0fr";
+            else if (p.length === 1) mainLayout.style.gridTemplateColumns = "0fr 2fr 2fr 1fr";
+            else mainLayout.style.gridTemplateColumns = "1fr 2fr 2fr 1fr";
+
+            p.forEach((part, index) => {
+                const box = document.createElement('div');
+                box.className = 'cardio-box';
+                box.style.backgroundColor = part.zone_color || '#1f2937';
+                
+                const maxH = part.max_hr || 190;
+                const pct = maxH > 0 ? Math.round((part.hr / maxH) * 100) : 0;
+
+                box.innerHTML = `
+                    <div class="cardio-name">${part.name}</div>
+                    <div class="cardio-bpm">${part.hr || '--'} <span style="font-size:1.8vw;">BPM</span></div>
+                    <div class="cardio-pct">${pct}% FCMax</div>
+                `;
+
+                if (p.length === 1) {
+                    rightSide.appendChild(box);
+                } else {
+                    if (index === 0) leftSide.appendChild(box);
+                    else if (index === 1) rightSide.appendChild(box);
+                    else if (index === 2) leftSide.appendChild(box);
+                    else if (index === 3) rightSide.appendChild(box);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
