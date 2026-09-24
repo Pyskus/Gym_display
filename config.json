@@ -1,0 +1,29 @@
+{
+    "active_fleet": "AUTO",
+    "slots": {
+        "1": {
+            "name": "Participant 1",
+            "age": 30,
+            "mac_a": "",
+            "mac_b": ""
+        },
+        "2": {
+            "name": "Participant 2",
+            "age": 30,
+            "mac_a": "",
+            "mac_b": ""
+        },
+        "3": {
+            "name": "Participant 3",
+            "age": 30,
+            "mac_a": "",
+            "mac_b": ""
+        },
+        "4": {
+            "name": "Participant 4",
+            "age": 30,
+            "mac_a": "",
+            "mac_b": ""
+        }
+    }
+}
