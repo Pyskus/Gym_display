@@ -274,8 +274,8 @@
     container.insertAdjacentHTML('beforeend', blockHtml);
 
     // --- Ajout automatique des phases par défaut à chaque nouveau bloc ---
-    addPhase(blockId, "GO !", 30, "#851919");
-    addPhase(blockId, "Repos", 30, "#2b22b2");
+    addPhase(blockId, "GO !", 30, "#dc2626");
+    addPhase(blockId, "Repos", 30, "#16a34a");
 
     return blockId;
 }
@@ -365,6 +365,177 @@ function selectPhaseColor(btn, color) {
         const defaultBlock = addBlock(1);
        
     };
+ // --- Gestion des modèles de timer ---
+
+// --- 1. Extraction des blocs et phases depuis le DOM ---
+function getBlocksFromDOM() {
+    const blocks = [];
+    const blockCards = document.querySelectorAll('#blocks-container .block-card');
+
+    blockCards.forEach(card => {
+        const repeatsInput = card.querySelector('.block-repeats');
+        const repeats = repeatsInput ? parseInt(repeatsInput.value, 10) || 1 : 1;
+        
+        const phases = [];
+        const phaseRows = card.querySelectorAll('.phases-container > div, .phases-container .phase-row');
+        
+        phaseRows.forEach(row => {
+            const nameInput = row.querySelector('.phase-name, input[type="text"]');
+            const durationInput = row.querySelector('.phase-duration, input[type="number"]');
+            const colorInput = row.querySelector('.phase-color, input[type="color"], select');
+
+            if (nameInput || durationInput || colorInput) {
+                phases.push({
+                    name: nameInput ? nameInput.value : 'Phase',
+                    duration: durationInput ? parseInt(durationInput.value, 10) || 30 : 30,
+                    color: colorInput ? colorInput.value : '#2563eb'
+                });
+            }
+        });
+
+        blocks.push({
+            repeats: repeats,
+            phases: phases
+        });
+    });
+
+    return blocks;
+}
+
+// --- 2. Fonctions des boutons (Sauvegarder, Charger, Supprimer) ---
+function saveCurrentTemplate() {
+    const nameInput = document.getElementById('template-name-input');
+    const templateName = nameInput ? nameInput.value.trim() : '';
+
+    if (!templateName) {
+        alert('Veuillez saisir un nom pour le modèle.');
+        return;
+    }
+
+    const blocksToSave = getBlocksFromDOM();
+
+    if (blocksToSave.length === 0) {
+        alert('Ajoutez au moins un bloc avant d\'enregistrer le modèle.');
+        return;
+    }
+
+    console.log('Enregistrement du modèle :', templateName, blocksToSave);
+
+    if (typeof socket !== 'undefined') {
+        socket.emit('save_template', {
+            name: templateName,
+            blocks: blocksToSave
+        });
+    }
+}
+
+function loadSelectedTemplate() {
+    const select = document.getElementById('template-select');
+    const templateName = select ? select.value : '';
+
+    if (!templateName) {
+        alert('Veuillez sélectionner un modèle à charger.');
+        return;
+    }
+
+    console.log('Chargement du modèle :', templateName);
+
+    if (typeof socket !== 'undefined') {
+        socket.emit('load_template', { name: templateName });
+    }
+}
+
+function deleteSelectedTemplate() {
+    const select = document.getElementById('template-select');
+    const templateName = select ? select.value : '';
+
+    if (!templateName) {
+        alert('Veuillez sélectionner un modèle à supprimer.');
+        return;
+    }
+
+    if (confirm(`Voulez-vous vraiment supprimer le modèle "${templateName}" ?`)) {
+        console.log('Suppression du modèle :', templateName);
+
+        if (typeof socket !== 'undefined') {
+            socket.emit('delete_template', { name: templateName });
+        }
+    }
+}
+
+// --- 3. Rendu du modèle chargé ---
+function renderTemplateBlocks(blocks) {
+    const container = document.getElementById('blocks-container');
+    if (!container) return;
+
+    // Vider l'affichage actuel
+    container.innerHTML = '';
+    if (typeof blockCounter !== 'undefined') {
+        blockCounter = 0;
+    }
+
+    blocks.forEach(block => {
+        // Crée le bloc
+        if (typeof addBlock === 'function') {
+            addBlock(block.repeats);
+        }
+
+        const currentBlockId = `block-${blockCounter}`;
+        const blockEl = document.getElementById(currentBlockId);
+        if (!blockEl) return;
+
+        const phasesContainer = blockEl.querySelector('.phases-container');
+        if (phasesContainer) {
+            // Efface les 2 phases par défaut (GO ! et Repos) injectées par addBlock
+            phasesContainer.innerHTML = '';
+        }
+
+        // Réinjecte les phases du modèle en passant nom, durée et couleur
+        if (block.phases && Array.isArray(block.phases)) {
+            block.phases.forEach(phase => {
+                if (typeof addPhase === 'function') {
+                    addPhase(
+                        currentBlockId,
+                        phase.name || "Phase",
+                        phase.duration || 30,
+                        phase.color || "#2563eb"
+                    );
+                }
+            });
+        }
+    });
+}
+// --- 4. Mise à jour du menu déroulant ---
+function updateTemplateSelect(templates) {
+    const select = document.getElementById('template-select');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">-- Choisir un modèle --</option>';
+
+    if (templates && typeof templates === 'object') {
+        Object.values(templates).forEach(tpl => {
+            const option = document.createElement('option');
+            option.value = tpl.name;
+            option.textContent = tpl.name;
+            select.appendChild(option);
+        });
+    }
+}
+
+// --- 5. Écouteurs Socket.IO ---
+if (typeof socket !== 'undefined') {
+    socket.on('update_templates', (templates) => {
+        updateTemplateSelect(templates);
+    });
+
+    socket.on('template_loaded', (templateData) => {
+        if (templateData && templateData.blocks) {
+            renderTemplateBlocks(templateData.blocks);
+        }
+    });
+
+    socket.emit('get_templates');
+}
 </script>
 </body>
 </html>

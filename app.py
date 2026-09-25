@@ -83,6 +83,16 @@ def handle_save_template(data):
     # Diffuse la liste mise à jour à toutes les interfaces connectées
     emit("update_templates", templates, broadcast=True)
 
+@socketio.on("load_template")
+def handle_load_template(data):
+    """Envoie les détails du modèle sélectionné au client."""
+    name = data.get("name")
+    if not name:
+        return
+
+    templates = load_templates()
+    if name in templates:
+        emit("template_loaded", templates[name])
 
 @socketio.on("delete_template")
 def handle_delete_template(data):
@@ -411,4 +421,4 @@ def handle_delete_sensor(data):
 if __name__ == '__main__':
     # Lancement du thread Bluetooth en arrière-plan
     threading.Thread(target=start_ble_loop, daemon=True).start()
-    socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, debug=False)
+    socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, debug=false, ssl_context='adhoc')

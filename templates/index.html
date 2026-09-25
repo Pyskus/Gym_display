@@ -4,6 +4,20 @@
     <meta charset="UTF-8">
     <title>Gym Display - Écran Principal</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <!-- Configuration PWA -->
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#121212">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GymDisplay">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
+
+<!-- Enregistrement du Service Worker -->
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+  }
+</script>
    <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
