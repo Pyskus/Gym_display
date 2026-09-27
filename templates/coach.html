@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gym Display - Télécommande Coach</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
@@ -536,6 +538,13 @@ if (typeof socket !== 'undefined') {
 
     socket.emit('get_templates');
 }
+
+// Enregistrement du Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('Service Worker enregistré:', reg))
+        .catch(err => console.error('Erreur Service Worker:', err));
+    }
 </script>
 </body>
 </html>
