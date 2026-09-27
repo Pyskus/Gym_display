@@ -1,22 +1,22 @@
 {
-  "name": "Gym Display",
-  "short_name": "GymDisplay",
-  "description": "Application de suivi d'entraînement et fréquence cardiaque",
-  "start_url": "/",
+  "name": "Gym Display - Coach",
+  "short_name": "Coach",
+  "start_url": "/coach",
   "display": "standalone",
-  "background_color": "#121212",
-  "theme_color": "#121212",
-  "orientation": "portrait",
+  "background_color": "#111827",
+  "theme_color": "#111827",
   "icons": [
     {
-      "src": "/static/icon-192.png",
+      "src": "/static/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "/static/icon-512.png",
+      "src": "/static/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
