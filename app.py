@@ -421,4 +421,14 @@ def handle_delete_sensor(data):
 if __name__ == '__main__':
     # Lancement du thread Bluetooth en arrière-plan
     threading.Thread(target=start_ble_loop, daemon=True).start()
-    socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, debug=false, ssl_context='adhoc')
+    socketio.run(
+        app,
+        host='0.0.0.0',
+        port=5000,
+        allow_unsafe_werkzeug=True,
+        debug=False,
+        ssl_context=(
+            '/etc/letsencrypt/live/dommatimer.duckdns.org/fullchain.pem',
+            '/etc/letsencrypt/live/dommatimer.duckdns.org/privkey.pem',
+        ),
+    )
