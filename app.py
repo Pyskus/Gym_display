@@ -418,6 +418,16 @@ def handle_delete_sensor(data):
     save_sensors(sensors)
     emit('update_sensors_list', sensors, broadcast=True)
 
+from flask import send_from_directory
+
+@app.route('/manifest.json')
+def serve_manifest():
+    return send_from_directory('static', 'manifest.json')
+
+@app.route('/sw.js')
+def serve_sw():
+    return send_from_directory('static', 'sw.js', mimetype='application/javascript')
+
 if __name__ == '__main__':
     # Lancement du thread Bluetooth en arrière-plan
     threading.Thread(target=start_ble_loop, daemon=True).start()
