@@ -147,6 +147,9 @@
         <button class="btn-danger" onclick="stopTimer()">⏹ Arrêter / Retour Horloge</button>
     </div>
 
+    <button id="btn-reboot" class="btn-danger" onclick="confirmReboot()">
+    🔄 Reboot system
+    </button>
    <script>
     const socket = io();
     let blockCounter = 0;
@@ -553,6 +556,22 @@ if (typeof socket !== 'undefined') {
         .then(reg => console.log('Service Worker enregistré:', reg))
         .catch(err => console.error('Erreur Service Worker:', err));
     }
+
+function confirmReboot() {
+    if (confirm("Voulez-vous vraiment redémarrer la Raspberry Pi ? L'application sera indisponible pendant environ 1 minute.")) {
+        fetch('/api/reboot', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                alert("La Raspberry Pi redémarre. La page se rechargera dans 45 secondes.");
+                setTimeout(() => {
+                    window.location.reload();
+                }, 45000);
+            })
+            .catch(err => {
+                alert("Erreur lors de l'envoi de la commande de redémarrage : " + err);
+            });
+    }
+}
 </script>
 </body>
 </html>
