@@ -1,11 +1,14 @@
 import json
 import os
+import subprocess
+from flask import jsonify, request
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import time
 import threading
 import asyncio
 from bleak import BleakClient
+
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -191,56 +194,91 @@ def get_zone_color(hr, max_hr):
     elif pct < 90: return "#dc2626" # Rouge (Seuil anaérobie)
     else: return "#9333ea"          # Violet (Max / Alerte)
 
-async def handle_single_sensor(mac, p_id, active_macs):
-    """Gère un capteur de manière autonome sans bloquer les autres"""
-    try:
-        async with BleakClient(mac, timeout=5.0) as client:
-            def handle_data(sender, data):
-                flags = data[0]
-                is_16bit = flags & 0x01
-                bpm = int.from_bytes(data[1:3], byteorder='little') if is_16bit else data[1]
-                
-                with thread_lock:
-                    for part in timer_state["participants"]:
-                        if part["id"] == p_id:
-                            part["hr"] = bpm
-                            max_h = 220 - part.get("age", 30)
-                            part["max_hr"] = max_h
-                            part["zone_color"] = get_zone_color(bpm, max_h)
-                            break
-                
-                # Émission immédiate vers le dashboard
-                socketio.emit('update_timer', timer_state)
 
-            await client.start_notify(HR_MEASUREMENT_UUID, handle_data)
+# Verrou pour s'assurer qu'un SEUL capteur initie sa connexion à la fois
+ble_connect_lock = asyncio.Lock()
+
+async def handle_single_sensor(mac, p_id, active_macs):
+    """Gère un capteur avec fermeture propre des sockets BlueZ lors des déconnexions"""
+    client = None
+    try:
+        # Séquencement des connexions
+        async with ble_connect_lock:
+            await asyncio.sleep(0.5)
+            client = BleakClient(mac, timeout=8.0)
+            await client.connect()
+
+        print(f"[BLE] Capteur {mac} connecté pour le participant {p_id}")
+
+        def handle_data(sender, data):
+            flags = data[0]
+            is_16bit = flags & 0x01
+            bpm = int.from_bytes(data[1:3], byteorder='little') if is_16bit else data[1]
             
-            # Maintient la connexion active tant que le capteur est connecté
-            while client.is_connected:
-                await asyncio.sleep(1)
-    except Exception:
-        pass
+            with thread_lock:
+                for part in timer_state.get("participants", []):
+                    if part["id"] == p_id:
+                        part["hr"] = bpm
+                        max_h = 220 - part.get("age", 30)
+                        part["max_hr"] = max_h
+                        part["zone_color"] = get_zone_color(bpm, max_h)
+                        break
+            
+            socketio.emit('update_timer', timer_state)
+
+        await client.start_notify(HR_MEASUREMENT_UUID, handle_data)
+        
+        # Boucle de maintien avec détection de suppression du participant
+        while client.is_connected:
+            with thread_lock:
+                still_active = any(p.get("id") == p_id for p in timer_state.get("participants", []))
+            
+            if not still_active:
+                print(f"[BLE] Participant {p_id} supprimé. Fermeture du capteur {mac}...")
+                break
+
+            await asyncio.sleep(1)
+
+    except Exception as e:
+        print(f"[BLE] Extinction ou perte de signal du capteur {mac} : {e}")
+
     finally:
-        # Libère l'adresse MAC si le capteur se déconnecte
+        # Purge explicite des connexions fantômes (BlueZ)
+        if client:
+            try:
+                if client.is_connected:
+                    await client.stop_notify(HR_MEASUREMENT_UUID)
+                    await client.disconnect()
+            except Exception:
+                pass
+                
+        await asyncio.sleep(3.0)
         active_macs.discard(mac)
+        print(f"[BLE] Sockets du capteur {mac} libérés.")
+
 
 async def ble_reader_task():
     """Surveille les participants et lance les connexions en tâche de fond"""
     active_macs = set()
     
     while True:
-        with thread_lock:
-            participants = list(timer_state.get("participants", []))
-        
-        for p in participants:
-            mac = p.get("mac")
-            p_id = p.get("id")
+        try:
+            with thread_lock:
+                participants = list(timer_state.get("participants", []))
             
-            if mac and mac not in active_macs:
-                active_macs.add(mac)
-                # Tâche asynchrone dédiée : ne bloque plus du tout la boucle
-                asyncio.create_task(handle_single_sensor(mac, p_id, active_macs))
+            for p in participants:
+                mac = p.get("mac")
+                p_id = p.get("id")
                 
+                if mac and mac not in active_macs:
+                    active_macs.add(mac)
+                    asyncio.create_task(handle_single_sensor(mac, p_id, active_macs))
+
+        except Exception as e:
+            print(f"[BLE] Erreur boucle principale : {e}")
+
         await asyncio.sleep(2.0)
+
 
 def start_ble_loop():
     loop = asyncio.new_event_loop()
@@ -418,6 +456,15 @@ def handle_delete_sensor(data):
     save_sensors(sensors)
     emit('update_sensors_list', sensors, broadcast=True)
 
+@app.route('/api/reboot', methods=['POST'])
+def reboot_pi():
+    try:
+        # Lance le redémarrage après un court délai pour permettre l'envoi de la réponse au téléphone
+        subprocess.Popen(["sudo", "reboot"])
+        return jsonify({"status": "ok", "message": "Redémarrage en cours..."}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
 from flask import send_from_directory
 
 @app.route('/manifest.json')
