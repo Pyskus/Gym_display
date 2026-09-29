@@ -26,13 +26,6 @@
         font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden;
     }
 
-    #audio-unlock {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: rgba(11, 15, 25, 0.98); z-index: 9999;
-        display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer;
-    }
-    #audio-unlock h1 { font-size: 3vw; color: #38bdf8; margin-bottom: 2vh; }
-    #audio-unlock p { font-size: 1.5vw; color: #9ca3af; }
 
     .layout-grid {
         width: 100vw; height: 100vh;
@@ -126,11 +119,7 @@
 </head>
 <body>
 
-    <div id="audio-unlock">
-        <h1>Initialisation de l'affichage</h1>
-        <p>Cliquez n'importe où pour activer l'audio.</p>
-    </div>
-
+  
     <div class="layout-grid" id="main-layout">
         <div class="side-panel" id="left-side"></div>
 
@@ -150,25 +139,37 @@
     </div>
 
     <script>
-        const socket = io();
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const socket = io();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-        document.getElementById('audio-unlock').addEventListener('click', function() {
-            if (audioCtx.state === 'suspended') { audioCtx.resume(); }
-            const osc = audioCtx.createOscillator(); osc.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.01);
-            this.style.display = 'none'; 
+// Déblocage automatique de l'audio au chargement (grâce au flag Chromium)
+window.addEventListener('DOMContentLoaded', () => {
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().then(() => {
+            console.log("[Audio] AudioContext débloqué automatiquement.");
         });
+    }
+});
 
-        function playTone(frequency, duration) {
-            if (audioCtx.state === 'suspended') return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sine'; osc.frequency.value = frequency;
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.start(); gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
-            osc.stop(audioCtx.currentTime + duration);
-        }
+function playTone(frequency, duration) {
+    // Si le contexte s'est remis en pause, on tente un resume avant de jouer le bip
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.type = 'sine'; 
+    osc.frequency.value = frequency;
+    osc.connect(gain); 
+    gain.connect(audioCtx.destination);
+    
+    osc.start(); 
+    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+    osc.stop(audioCtx.currentTime + duration);
+}
 
        socket.on('update_colors', function(data) {
     console.log("Données reçues :", data);
