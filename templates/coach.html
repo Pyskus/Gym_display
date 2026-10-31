@@ -98,7 +98,7 @@
 </div>
 
     <div class="card">
-        <label>Configuration des Participants (0 à 4) :</label>
+        <label>Configuration des Participants (0 à 6) :</label>
         <div id="participants-container"></div>
         <button type="button" class="btn-primary btn-small" onclick="addParticipant()" style="margin-top: 5px;">+ Ajouter un Participant</button>
     </div>
@@ -208,8 +208,8 @@
 
     // --- GESTION DES PARTICIPANTS ---
     function addParticipant(name = "Athlète", age = 30, initialMac = "") {
-        if (document.querySelectorAll('.participant-row').length >= 4) {
-            alert("Maximum 4 participants.");
+        if (document.querySelectorAll('.participant-row').length >= 6) {
+            alert("Maximum 6 participants.");
             return;
         }
         participantCounter++;

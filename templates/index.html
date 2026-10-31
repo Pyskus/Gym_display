@@ -26,6 +26,9 @@
         font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden;
     }
 
+    :root {
+        --logo-opacity: 0.20;
+    }  
 
     .layout-grid {
         width: 100vw; height: 100vh;
@@ -38,24 +41,56 @@
     .side-panel {
         display: flex; flex-direction: column; height: 100%;
         border-right: 2px solid rgba(255,255,255,0.1);
+        overflow: hidden;
     }
     .side-panel:last-child { border-right: none; border-left: 2px solid rgba(255,255,255,0.1); }
 
-    /* Cartes Cardio */
+    /* Cartes Cardio (Comportement de base) */
     .cardio-box {
         flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;
-        padding: 1rem; transition: background-color 0.4s ease; text-align: center;
+        padding: 0.8rem; transition: background-color 0.4s ease, padding 0.3s ease; text-align: center;
         border-bottom: 1px solid rgba(255,255,255,0.1);
         background-color: #1f2937;
+        min-height: 0; /* Évite les débordements Flexbox */
     }
-    .cardio-name { font-size: 4vw; font-weight: bold; margin-bottom: 1vh; text-transform: uppercase; }
+    .cardio-box:last-child {
+        border-bottom: none;
+    }
+
+    /* Polices intactes (Tailles vh/vw conservées) */
+    .cardio-name { 
+        font-size: 3.2vw; 
+        font-weight: bold; 
+        margin-bottom: 0.5vh; 
+        text-transform: uppercase; 
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 90%;
+    }
     .cardio-bpm { 
-        font-size: 9vw; 
+        font-size: 8vw; 
         font-weight: 900; 
-        line-height: 1; 
-        font-variant-numeric: tabular-nums; /* Empêche le saut de largeur de la FC */
+        line-height: 0.95; 
+        font-variant-numeric: tabular-nums; 
     }
-    .cardio-pct { font-size: 2vw; opacity: 0.9; margin-top: 0.8vh; font-weight: 600; }
+    .cardio-pct { 
+        font-size: 1.8vw; 
+        opacity: 0.9; 
+        margin-top: 0.4vh; 
+        font-weight: 600; 
+    }
+
+    /* Réduction des marges/paddings uniquement si la colonne contient 3 cases */
+    .side-panel.slots-3 .cardio-box {
+        padding: 0.2rem 0.4rem;
+    }
+    .side-panel.slots-3 .cardio-name {
+        margin-bottom: 0;
+    }
+    .side-panel.slots-3 .cardio-pct {
+        margin-top: 0;
+    }
 
     /* Panneau Central */
     .center-panel {
@@ -64,10 +99,6 @@
         position: relative; padding: 2rem; transition: background-color 0.5s ease;
         overflow: hidden;
     }
-/* Déclaration de la variable dynamique */
-:root {
-    --logo-opacity: 0.20;
-  }  
 
     /* Arrière-plan logo PNG */
     .center-panel::before {
@@ -87,22 +118,22 @@
     }
 
     /* Verrouille le blanc sur le timer et les blocs cardio */
-#timer-display, .participant-card, .cardio-text {
-    color: #ffffff !important;
-}
+    #timer-display, .participant-card, .cardio-text {
+        color: #ffffff !important;
+    }
 
     .center-panel.timer-active::before { display: none; }
 
     /* Horloge */
     #clock-view { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; height: 100%; z-index: 1; }
     #clock-time { font-size: 14vw; font-weight: 800; letter-spacing: -2px; }
-   #clock-date {
-    font-size: 3vw;
-    opacity: 0.7; /* 👈 80% d'opacité sur la couleur appliquée */
-    text-transform: uppercase;
-    letter-spacing: 4px;
-    margin-top: 1rem;
-}
+    #clock-date {
+        font-size: 3vw;
+        opacity: 0.7;
+        text-transform: uppercase;
+        letter-spacing: 4px;
+        margin-top: 1rem;
+    }
 
     /* Chrono */
     #timer-view { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; height: 100%; text-align: center; z-index: 1; }
@@ -117,9 +148,8 @@
     #timer-meta { font-size: 2.2vw; color: rgba(255, 255, 255, 0.9); margin-top: 3vh; }
 </style>
 </head>
-<body>
+<<body>
 
-  
     <div class="layout-grid" id="main-layout">
         <div class="side-panel" id="left-side"></div>
 
@@ -139,53 +169,51 @@
     </div>
 
     <script>
-      const socket = io();
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const socket = io();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-// Déblocage automatique de l'audio au chargement (grâce au flag Chromium)
-window.addEventListener('DOMContentLoaded', () => {
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume().then(() => {
-            console.log("[Audio] AudioContext débloqué automatiquement.");
+        // Déblocage automatique de l'audio au chargement (grâce au flag Chromium)
+        window.addEventListener('DOMContentLoaded', () => {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => {
+                    console.log("[Audio] AudioContext débloqué automatiquement.");
+                });
+            }
         });
-    }
-});
 
-function playTone(frequency, duration) {
-    // Si le contexte s'est remis en pause, on tente un resume avant de jouer le bip
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
-    
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    
-    osc.type = 'sine'; 
-    osc.frequency.value = frequency;
-    osc.connect(gain); 
-    gain.connect(audioCtx.destination);
-    
-    osc.start(); 
-    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
-    osc.stop(audioCtx.currentTime + duration);
-}
+        function playTone(frequency, duration) {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine'; 
+            osc.frequency.value = frequency;
+            osc.connect(gain); 
+            gain.connect(audioCtx.destination);
+            
+            osc.start(); 
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+            osc.stop(audioCtx.currentTime + duration);
+        }
 
-       socket.on('update_colors', function(data) {
-    console.log("Données reçues :", data);
-    if (data.bg_color) document.body.style.backgroundColor = data.bg_color;
-   // ✅ On cible UNIQUEMENT l'élément de l'horloge
-    if (data.clock_color) {
-        const clockEl = document.getElementById('clock-display'); // ⚠️ Remplace 'clock-display' par l'ID exact de ton heure/horloge
-        if (clockEl) clockEl.style.color = data.clock_color;
-    }
+        socket.on('update_colors', function(data) {
+            console.log("Données reçues :", data);
+            if (data.bg_color) document.body.style.backgroundColor = data.bg_color;
+            
+            if (data.clock_color) {
+                const clockEl = document.getElementById('clock-time');
+                if (clockEl) clockEl.style.color = data.clock_color;
+            }
 
-    // Application de l'opacité sur la variable CSS du pseudo-élément ::before
-    if (data.logo_opacity !== undefined) {
-        console.log("Application opacité :", data.logo_opacity);
-        document.documentElement.style.setProperty('--logo-opacity', data.logo_opacity);
-    }
-});
+            if (data.logo_opacity !== undefined) {
+                console.log("Application opacité :", data.logo_opacity);
+                document.documentElement.style.setProperty('--logo-opacity', data.logo_opacity);
+            }
+        });
 
         socket.on('play_beep', function(data) {
             if (data.type === 'normal') playTone(440, 0.15);
@@ -200,101 +228,117 @@ function playTone(frequency, duration) {
             document.getElementById('clock-date').innerText = now.toLocaleDateString('fr-FR', options);
         }, 1000);
 
-        // Fonction pour mettre à jour les cartes cardio sans détruire le DOM à chaque tick
-function updateParticipantsUI(participants, mainLayout, leftSide, rightSide) {
-    // 1. Adapter la grille CSS seulement si le nombre de participants change
-    if (participants.length === 0) mainLayout.style.gridTemplateColumns = "0fr 1fr 1fr 0fr";
-    else if (participants.length === 1) mainLayout.style.gridTemplateColumns = "0fr 2fr 2fr 1fr";
-    else mainLayout.style.gridTemplateColumns = "1fr 2fr 2fr 1fr";
+        // Fonction mise à jour pour gérer jusqu'à 6 participants (3 à gauche, 3 à droite)
+        function updateParticipantsUI(participants, mainLayout, leftSide, rightSide) {
+            const count = participants.length;
 
-    // Reconstruire les conteneurs uniquement si la structure a changé
-    const existingBoxes = document.querySelectorAll('.cardio-box');
-    if (existingBoxes.length !== participants.length) {
-        leftSide.innerHTML = '';
-        rightSide.innerHTML = '';
-    }
-
-    participants.forEach((part, index) => {
-    const boxId = `cardio-box-${part.id || index}`;
-    let box = document.getElementById(boxId);
-
-    // Si la carte n'existe pas encore dans le DOM, on la crée une seule fois
-    if (!box) {
-        box = document.createElement('div');
-        box.id = boxId;
-        box.className = 'cardio-box';
-        box.innerHTML = `
-            <div class="cardio-name"></div>
-            <div class="cardio-bpm"><span class="bpm-value">--</span></div>
-            <div class="cardio-pct"></div>
-        `;
-
-            if (participants.length === 1) {
-                rightSide.appendChild(box);
+            // 1. Adaptation de la grille globale selon la présence de participants
+            if (count === 0) {
+                mainLayout.style.gridTemplateColumns = "0fr 1fr 1fr 0fr";
+            } else if (count <= 2) {
+                mainLayout.style.gridTemplateColumns = "1fr 2fr 2fr 1fr";
             } else {
-                if (index === 0 || index === 2) leftSide.appendChild(box);
-                else rightSide.appendChild(box);
+                mainLayout.style.gridTemplateColumns = "1fr 2fr 2fr 1fr";
             }
+
+            // Calcul de la répartition : Max 3 à gauche, et le reste à droite (jusqu'à 3 aussi)
+            let leftCount = count > 4 ? 3 : Math.min(2, count);
+            if (count === 3) leftCount = 2; // Optionnel : équilibrer 2 à gauche / 1 à droite si 3 participants
+            if (count === 4) leftCount = 2; // 2 à gauche / 2 à droite
+            if (count === 5) leftCount = 3; // 3 à gauche / 2 à droite
+            if (count === 6) leftCount = 3; // 3 à gauche / 3 à droite
+
+            let rightCount = count - leftCount;
+
+            // Application des classes CSS dynamiques (.slots-2 ou .slots-3) pour les marges
+            leftSide.className = `side-panel slots-${leftCount}`;
+            rightSide.className = `side-panel slots-${rightCount}`;
+
+            // Reconstruire les conteneurs si le nombre total a changé
+            const existingBoxes = document.querySelectorAll('.cardio-box');
+            if (existingBoxes.length !== count) {
+                leftSide.innerHTML = '';
+                rightSide.innerHTML = '';
+            }
+
+            participants.forEach((part, index) => {
+                const boxId = `cardio-box-${part.id || index}`;
+                let box = document.getElementById(boxId);
+
+                // Si la carte n'existe pas, on la crée et on l'affecte au bon panneau
+                if (!box) {
+                    box = document.createElement('div');
+                    box.id = boxId;
+                    box.className = 'cardio-box';
+                    box.innerHTML = `
+                        <div class="cardio-name"></div>
+                        <div class="cardio-bpm"><span class="bpm-value">--</span></div>
+                        <div class="cardio-pct"></div>
+                    `;
+
+                    // Distribution intelligente dans le DOM
+                    if (index < leftCount) {
+                        leftSide.appendChild(box);
+                    } else {
+                        rightSide.appendChild(box);
+                    }
+                }
+
+                // Mise à jour des valeurs du participant
+                const maxH = part.max_hr || 190;
+                const pct = maxH > 0 ? Math.round((part.hr / maxH) * 100) : 0;
+
+                box.style.backgroundColor = part.zone_color || '#1f2937';
+                box.querySelector('.cardio-name').textContent = part.name;
+                box.querySelector('.bpm-value').textContent = part.hr || '--';
+                box.querySelector('.cardio-pct').textContent = `${pct}% FCMax`;
+            });
         }
 
-        // Mise à jour ultra-rapide des valeurs sans toucher à la structure HTML
-        const maxH = part.max_hr || 190;
-        const pct = maxH > 0 ? Math.round((part.hr / maxH) * 100) : 0;
+        // Écouteur principal pour les timers et états
+        socket.on('update_timer', function(state) {
+            const centerPanel = document.getElementById('center-panel');
+            const clockView = document.getElementById('clock-view');
+            const timerView = document.getElementById('timer-view');
 
-        box.style.backgroundColor = part.zone_color || '#1f2937';
-        box.querySelector('.cardio-name').textContent = part.name;
-        box.querySelector('.bpm-value').textContent = part.hr || '--';
-        box.querySelector('.cardio-pct').textContent = `${pct}% FCMax`;
-    });
-}
+            if (state.mode === "timer") {
+                centerPanel.classList.add('timer-active');
+                centerPanel.style.backgroundColor = state.current_phase_color;
+                clockView.style.display = 'none';
+                timerView.style.display = 'flex';
+                
+                document.getElementById('phase-title').textContent = state.phase_name;
+                document.getElementById('timer-countdown').textContent = state.time_left;
+                
+                document.getElementById('phase-title').style.color = '#ffffff';
+                document.getElementById('timer-countdown').style.color = '#ffffff';
 
-// Écouteur principal révisé
-socket.on('update_timer', function(state) {
-    const centerPanel = document.getElementById('center-panel');
-    const clockView = document.getElementById('clock-view');
-    const timerView = document.getElementById('timer-view');
+                if (state.blocks && state.blocks.length > 0 && state.running) {
+                    const currentBlock = state.blocks[state.current_block_index];
+                    const currentSeries = currentBlock.repeats_total - currentBlock.repeats_left + 1;
+                    document.getElementById('timer-meta').textContent = `Bloc ${state.current_block_index + 1}/${state.blocks.length} Série ${currentSeries}/${currentBlock.repeats_total}`;
+                } else {
+                    document.getElementById('timer-meta').textContent = "";
+                }
+            } else {
+                centerPanel.classList.remove('timer-active');
+                centerPanel.style.backgroundColor = state.bg_color;
+                
+                document.getElementById('clock-time').style.color = state.clock_color;
+                const clockDate = document.getElementById('clock-date');
+                if (clockDate) clockDate.style.color = state.clock_color;
+                
+                timerView.style.display = 'none';
+                clockView.style.display = 'flex';
+            }
 
-    if (state.mode === "timer") {
-        centerPanel.classList.add('timer-active');
-        centerPanel.style.backgroundColor = state.current_phase_color;
-        clockView.style.display = 'none';
-        timerView.style.display = 'flex';
-        
-        document.getElementById('phase-title').textContent = state.phase_name;
-        document.getElementById('timer-countdown').textContent = state.time_left;
-        
-        // ✅ Forcer le titre et le timer en blanc permanent
-        document.getElementById('phase-title').style.color = '#ffffff';
-        document.getElementById('timer-countdown').style.color = '#ffffff';
-
-        if (state.blocks && state.blocks.length > 0 && state.running) {
-            const currentBlock = state.blocks[state.current_block_index];
-            const currentSeries = currentBlock.repeats_total - currentBlock.repeats_left + 1;
-            document.getElementById('timer-meta').textContent = `Bloc ${state.current_block_index + 1}/${state.blocks.length} - Série ${currentSeries}/${currentBlock.repeats_total}`;
-        } else {
-            document.getElementById('timer-meta').textContent = "";
-        }
-    } else {
-        centerPanel.classList.remove('timer-active');
-        centerPanel.style.backgroundColor = state.bg_color;
-        
-        // ✅ Seule l'horloge prend la couleur choisie en mode horloge
-        document.getElementById('clock-time').style.color = state.clock_color;
-        const clockDate = document.getElementById('clock-date');
-        if (clockDate) clockDate.style.color = state.clock_color;;
-        
-        timerView.style.display = 'none';
-        clockView.style.display = 'flex';
-    }
-
-    // Mise à jour fluide des cartes cardio
-    updateParticipantsUI(
-        state.participants || [],
-        document.getElementById('main-layout'),
-        document.getElementById('left-side'),
-        document.getElementById('right-side')
-    );
-});
+            // Mise à jour fluide des cartes cardio
+            updateParticipantsUI(
+                state.participants || [],
+                document.getElementById('main-layout'),
+                document.getElementById('left-side'),
+                document.getElementById('right-side')
+            );
+        });
     </script>
 </body>
-</html>
